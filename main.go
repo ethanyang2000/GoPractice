@@ -6,13 +6,11 @@ import (
 
 func main() {
 	e := gee.New()
-	e.GET("/ping", func(c *gee.Context) {
-		name := c.Query("name")
-		id := c.Query("id")
-		c.JSON(200, gee.H{
-			"name": name,
-			"id":   id,
-		})
+	e.GET("/ping/:idx/*id", func(c *gee.Context) {
+		c.JSON(200, c.Params)
+	})
+	e.GET("/ping/:idx/*ids/fjaosjf/fasjo", func(c *gee.Context) {
+		c.JSON(200, c.Params)
 	})
 	e.Run(":8080")
 }

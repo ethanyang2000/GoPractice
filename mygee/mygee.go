@@ -5,7 +5,7 @@ import (
 )
 
 type HandlerFunc func(c *Context)
-type RouterMap map[string]map[string]HandlerFunc
+type RouterMap map[string]*node
 
 type Engine struct {
 	r *router
