@@ -2,33 +2,62 @@ package mygee
 
 import (
 	"net/http"
+	"strings"
 )
 
 type HandlerFunc func(c *Context)
 type RouterMap map[string]*node
 
 type Engine struct {
-	r *router
-	c *Context
+	*RouterGroup
+	r     *router
+	group []*RouterGroup
+}
+
+type RouterGroup struct {
+	engine       *Engine
+	basePath     string
+	relativePath string
+	parent       *RouterGroup
+	middleware   []HandlerFunc
 }
 
 func New() *Engine {
-	return &Engine{r: NewRouter(), c: new(Context)}
+	e := &Engine{r: NewRouter()}
+	e.RouterGroup = &RouterGroup{
+		engine:       e,
+		basePath:     "",
+		relativePath: "",
+	}
+	return e
 }
 
-func (e *Engine) GET(str string, h HandlerFunc) {
-	e.r.addRoute("GET", str, h)
+func (group *RouterGroup) Group(path string) *RouterGroup {
+	g := &RouterGroup{
+		engine:       group.engine,
+		parent:       group,
+		relativePath: path,
+		basePath:     strings.Join([]string{group.basePath, path}, "/"),
+	}
+	group.engine.group = append(group.engine.group, g)
+	return g
 }
 
-func (e *Engine) POST(str string, h HandlerFunc) {
-	e.r.addRoute("POST", str, h)
+func (g *RouterGroup) GET(str string, h HandlerFunc) {
+	str = strings.Join([]string{g.basePath, str}, "/")
+	g.engine.r.addRoute("GET", str, h)
 }
 
-func (e *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (g *RouterGroup) POST(str string, h HandlerFunc) {
+	str = strings.Join([]string{g.basePath, str}, "/")
+	g.engine.r.addRoute("POST", str, h)
+}
+
+func (g *RouterGroup) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	c := NewContext(w, req)
-	e.r.handle(c)
+	g.engine.r.handle(c)
 }
 
-func (e *Engine) Run(port string) (err error) {
-	return http.ListenAndServe(port, e)
+func (g *RouterGroup) Run(port string) (err error) {
+	return http.ListenAndServe(port, g.engine)
 }
