@@ -29,6 +29,7 @@ func New() *Engine {
 		basePath:     "",
 		relativePath: "",
 	}
+	e.group = append(e.group, e.RouterGroup)
 	return e
 }
 
@@ -37,25 +38,29 @@ func (group *RouterGroup) Group(path string) *RouterGroup {
 		engine:       group.engine,
 		parent:       group,
 		relativePath: path,
-		basePath:     strings.Join([]string{group.basePath, path}, "/"),
+		basePath:     strings.Join([]string{group.basePath, path}, ""),
 	}
 	group.engine.group = append(group.engine.group, g)
 	return g
 }
 
+func (gourp *RouterGroup) Use(middleware ...HandlerFunc) {
+	gourp.middleware = append(gourp.middleware, middleware...)
+}
+
 func (g *RouterGroup) GET(str string, h HandlerFunc) {
-	str = strings.Join([]string{g.basePath, str}, "/")
+	str = strings.Join([]string{g.basePath, str}, "")
 	g.engine.r.addRoute("GET", str, h)
 }
 
 func (g *RouterGroup) POST(str string, h HandlerFunc) {
-	str = strings.Join([]string{g.basePath, str}, "/")
+	str = strings.Join([]string{g.basePath, str}, "")
 	g.engine.r.addRoute("POST", str, h)
 }
 
 func (g *RouterGroup) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	c := NewContext(w, req)
-	g.engine.r.handle(c)
+	g.engine.r.handle(c, g)
 }
 
 func (g *RouterGroup) Run(port string) (err error) {

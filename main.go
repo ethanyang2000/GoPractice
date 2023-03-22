@@ -1,18 +1,37 @@
 package main
 
 import (
+	"log"
 	gee "mygee"
+	"time"
 )
 
+func onlyForV2() gee.HandlerFunc {
+	return func(c *gee.Context) {
+		// Start timer
+		t := time.Now()
+		// Calculate resolution time
+		log.Printf("[%d] %s in %v for group v2", 200, c.Request.RequestURI, time.Since(t))
+	}
+}
+
 func main() {
-	e := gee.New()
-	group := e.Group("g1")
-	group2 := group.Group("g2")
-	e.GET("ping/:idx/*id", func(c *gee.Context) {
+	r := gee.New()
+	r.Use(func(c *gee.Context) {
+		log.Printf("global middleware used")
+	}) // global midlleware
+	r.GET("/ping/:name", func(c *gee.Context) {
 		c.JSON(200, c.Params)
 	})
-	group2.GET("pong/:idx/*ids", func(c *gee.Context) {
-		c.JSON(200, c.Params)
-	})
-	e.Run(":8080")
+
+	v2 := r.Group("/v2")
+	v2.Use(onlyForV2()) // v2 group middleware
+	{
+		v2.GET("/hello/:name", func(c *gee.Context) {
+			// expect /hello/geektutu
+			c.JSON(200, c.Params)
+		})
+	}
+
+	r.Run(":8080")
 }

@@ -1,7 +1,6 @@
 package mygee
 
 import (
-	"net/http"
 	"strings"
 )
 
@@ -33,14 +32,17 @@ func ParsePrefix(pattern string) []string {
 	return prefixes
 }
 
-func (r *router) handle(c *Context) {
+func (r *router) findRoute(c *Context) HandlerFunc {
 	prefixes := ParsePrefix(c.Path)
 	if _, ok := r.routerMap[c.Method]; !ok {
-		http.Error(c.Writer, "NOT FOUND", 404)
-		return
+		return func(c *Context) {
+			c.String(404, "NOT FOUND")
+		}
 	}
 	if node, ok := r.routerMap[c.Method].Search(prefixes, 0); !ok {
-		http.Error(c.Writer, "NOT FOUND", 404)
+		return func(c *Context) {
+			c.String(404, "NOT FOUND")
+		}
 	} else {
 		params := make(map[string]string)
 		patterns := strings.Split(node.Pattern, "/")
@@ -53,6 +55,17 @@ func (r *router) handle(c *Context) {
 			}
 		}
 		c.Params = params
-		node.handler(c)
+		return node.handler
 	}
+}
+
+func (r *router) handle(c *Context, g *RouterGroup) {
+	handler := r.findRoute(c)
+	for _, group := range g.engine.group {
+		if strings.HasPrefix(c.Path, group.basePath) {
+			c.handler = append(c.handler, group.middleware...)
+		}
+	}
+	c.handler = append(c.handler, handler)
+	c.Next()
 }

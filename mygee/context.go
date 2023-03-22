@@ -13,6 +13,8 @@ type Context struct {
 	Method  string
 	Path    string
 	Params  map[string]string
+	handler []HandlerFunc
+	index   int
 }
 
 func NewContext(w http.ResponseWriter, req *http.Request) *Context {
@@ -21,6 +23,15 @@ func NewContext(w http.ResponseWriter, req *http.Request) *Context {
 		Request: req,
 		Method:  req.Method,
 		Path:    req.URL.Path,
+		index:   -1,
+	}
+}
+
+func (c *Context) Next() {
+	c.index++
+	l := len(c.handler)
+	for ; c.index < l; c.index++ {
+		c.handler[c.index](c)
 	}
 }
 
