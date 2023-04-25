@@ -1,14 +1,15 @@
 package mycache
 
 import (
+	lru "cache/mycache/lru"
 	"sync"
 )
 
 type Cache struct {
 	mu        sync.Mutex
-	lru       *cache
+	lru       *lru.LruCache
 	maxLen    int64
-	onEvicted func(string, EntryValue)
+	onEvicted func(string, lru.EntryValue)
 }
 
 func (c *Cache) Search(key string) (bv ByteView, ok bool) {
@@ -16,23 +17,23 @@ func (c *Cache) Search(key string) (bv ByteView, ok bool) {
 	defer c.mu.Unlock()
 	if c.lru != nil {
 		v, ok := c.lru.Search(key)
-		if v == nil {
-			return ByteView{}, ok
+		if !ok {
+			return bv, ok
 		} else {
 			return v.(ByteView), ok
 		}
 	} else {
-		return
+		return bv, false
 	}
 }
 
-func (c *Cache) Add(key string, value ByteView) bool {
+func (c *Cache) Add(key string, value ByteView) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.lru == nil {
-		c.lru = NewCache(c.maxLen, c.onEvicted)
+		c.lru = lru.NewCache(c.maxLen, c.onEvicted)
 	}
-	return c.lru.Add(key, value)
+	c.lru.Add(key, value)
 }
 
 func (c *Cache) Delete(key string) (ByteView, bool) {

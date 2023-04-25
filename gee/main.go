@@ -2,8 +2,9 @@ package main
 
 import (
 	"log"
-	gee "mygee"
 	"time"
+
+	gee "gee/mygee"
 )
 
 func onlyForV2() gee.HandlerFunc {

@@ -1,6 +1,10 @@
 package mycache
 
-import "sync"
+import (
+	lru "cache/mycache/lru"
+	"fmt"
+	"sync"
+)
 
 type Group struct {
 	MainCache *Cache
@@ -13,14 +17,14 @@ var (
 	groups = make(map[string]*Group)
 )
 
-func NewGroup(name string, maxLen int64, getter getter, onEvicted func(string, EntryValue)) *Group {
+func NewGroup(name string, maxLen int64, getter getter, onEvicted func(string, lru.EntryValue)) *Group {
 	mu.Lock()
 	defer mu.Unlock()
 	g := &Group{
 		MainCache: &Cache{
 			maxLen:    maxLen,
 			onEvicted: onEvicted,
-			lru:       NewCache(maxLen, onEvicted),
+			lru:       lru.NewCache(maxLen, onEvicted),
 		},
 		Name:   name,
 		Getter: getter,
@@ -35,25 +39,30 @@ func GetGroup(name string) *Group {
 	return groups[name]
 }
 
-func (g *Group) Add(key string, value ByteView) bool {
-	return g.MainCache.Add(key, value)
+func (g *Group) Add(key string, value ByteView) {
+	g.MainCache.Add(key, value)
 }
 
 func (g *Group) Delete(key string) (ByteView, bool) {
 	return g.MainCache.Delete(key)
 }
 
-func (g *Group) Search(key string) (ByteView, bool) {
+func (g *Group) Search(key string) (ByteView, error) {
 	if bv, ok := g.MainCache.Search(key); ok {
-		return bv, ok
+		return bv, nil
 	} else {
 		return g.load(key)
 	}
 }
 
-func (g *Group) load(key string) (ByteView, bool) {
-	v, ok := g.Getter.Get(key)
-	bv := ByteView{b: v.Slice()}
+func (g *Group) load(key string) (ByteView, error) {
+	v, err := g.Getter.Get(key)
+	if err != nil {
+		return ByteView{}, fmt.Errorf("get data from local database failed")
+	}
+	newV := make([]byte, len(v))
+	copy(newV, v)
+	bv := ByteView{B: newV}
 	g.MainCache.Add(key, bv)
-	return bv, ok
+	return bv, nil
 }

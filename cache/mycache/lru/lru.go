@@ -1,8 +1,8 @@
-package mycache
+package lru
 
 import "container/list"
 
-type cache struct {
+type LruCache struct {
 	MaxLength int64
 	Length    int64
 	CacheMap  map[string]*list.Element
@@ -19,8 +19,8 @@ type EntryValue interface {
 	Len() int64
 }
 
-func NewCache(maxLength int64, onEvicted func(string, EntryValue)) (c *cache) {
-	return &cache{
+func NewCache(maxLength int64, onEvicted func(string, EntryValue)) (c *LruCache) {
+	return &LruCache{
 		MaxLength: maxLength,
 		Length:    0,
 		CacheMap:  make(map[string]*list.Element),
@@ -29,7 +29,7 @@ func NewCache(maxLength int64, onEvicted func(string, EntryValue)) (c *cache) {
 	}
 }
 
-func (c *cache) Add(key string, value EntryValue) bool {
+func (c *LruCache) Add(key string, value EntryValue) {
 	if valueOld, ok := c.CacheMap[key]; ok {
 		kv := valueOld.Value.(*entry)
 		c.List.MoveToFront(valueOld)
@@ -42,41 +42,49 @@ func (c *cache) Add(key string, value EntryValue) bool {
 		c.Length += int64(value.Len()) + int64(len(key))
 	}
 	if c.Length > c.MaxLength {
-		return c.RemoveOld()
+		c.RemoveOld()
 	}
-	return true
 }
 
-func (c *cache) Delete(key string) (EntryValue, bool) {
-	if value, ok := c.CacheMap[key]; ok {
-		c.List.Remove(value)
+func (c *LruCache) Delete(key string) (EntryValue, bool) {
+	if ele, ok := c.CacheMap[key]; ok {
+		c.List.Remove(ele)
 		delete(c.CacheMap, key)
-		c.onEvicted(key, value.Value.(*entry).Value)
-		c.Length -= int64(len(key)) + int64(value.Value.(*entry).Value.Len())
+		if c.onEvicted != nil {
+			c.onEvicted(key, ele.Value.(*entry).Value)
+		}
+		c.Length -= int64(len(key)) + int64(ele.Value.(*entry).Value.Len())
+		return ele.Value.(*entry).Value, true
+	} else {
+		return nil, false
+	}
+}
+
+func (c *LruCache) RemoveOld() {
+	for c.Length > c.MaxLength {
+		r := c.List.Back()
+		if r != nil {
+			kv := r.Value.(*entry)
+			delete(c.CacheMap, kv.Key)
+			c.List.Remove(r)
+			if c.onEvicted != nil {
+				c.onEvicted(kv.Key, kv.Value)
+			}
+			c.Length -= int64(len(kv.Key)) + int64(kv.Value.Len())
+		}
+	}
+}
+
+func (c *LruCache) Search(key string) (ev EntryValue, ok bool) {
+	value, ok := c.CacheMap[key]
+	if ok {
+		c.List.MoveToFront(value)
 		return value.Value.(*entry).Value, true
 	} else {
 		return nil, false
 	}
 }
 
-func (c *cache) RemoveOld() bool {
-	for c.Length > c.MaxLength {
-		r := c.List.Back()
-		kv := r.Value.(*entry)
-		delete(c.CacheMap, kv.Key)
-		c.List.Remove(r)
-		c.onEvicted(kv.Key, kv.Value)
-		c.Length -= int64(len(kv.Key)) + int64(kv.Value.Len())
-	}
-	return true
-}
-
-func (c *cache) Search(key string) (ev EntryValue, ok bool) {
-	value, ok := c.CacheMap[key]
-	if ok {
-		c.List.MoveToFront(value)
-		return value.Value.(*entry).Value, true
-	} else {
-		return
-	}
+func (c *LruCache) Len() int {
+	return len(c.CacheMap)
 }
