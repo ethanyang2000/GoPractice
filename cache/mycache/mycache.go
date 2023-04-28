@@ -10,6 +10,7 @@ type Group struct {
 	MainCache *Cache
 	Name      string
 	Getter    getter
+	peers     PeerPicker
 }
 
 var (
@@ -56,6 +57,25 @@ func (g *Group) Search(key string) (ByteView, error) {
 }
 
 func (g *Group) load(key string) (ByteView, error) {
+	if g.peers != nil {
+		if peer, ok := g.peers.Pick(key); ok {
+			if value, err := g.getFromPeer(peer, key); err == nil {
+				return value, nil
+			}
+		}
+	}
+	return g.getFromLocal(key)
+}
+
+func (g *Group) getFromPeer(getter PeerGetter, key string) (ByteView, error) {
+	value, err := getter.Search(g.Name, key)
+	if err != nil {
+		return ByteView{}, err
+	}
+	return ByteView{B: value}, nil
+}
+
+func (g *Group) getFromLocal(key string) (ByteView, error) {
 	v, err := g.Getter.Get(key)
 	if err != nil {
 		return ByteView{}, fmt.Errorf("get data from local database failed")
@@ -65,4 +85,12 @@ func (g *Group) load(key string) (ByteView, error) {
 	bv := ByteView{B: newV}
 	g.MainCache.Add(key, bv)
 	return bv, nil
+}
+
+func (g *Group) RegisterPeers(peers PeerPicker) {
+	if g.peers == nil {
+		g.peers = peers
+	} else {
+		panic("duplicant peers initiated")
+	}
 }

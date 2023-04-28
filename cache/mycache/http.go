@@ -1,23 +1,32 @@
 package mycache
 
 import (
+	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strings"
+	"sync"
 )
 
-type cacheServer struct {
-	Prefix   string
-	BasePath string
+type HTTPPool struct {
+	Prefix      string
+	BasePath    string
+	mu          sync.Mutex
+	peers       *NodeMap
+	httpGetters map[string]*httpGetter
 }
 
-func NewServer(prefix string, basepath string) *cacheServer {
-	return &cacheServer{
-		Prefix:   prefix,
-		BasePath: basepath,
+func NewPool(prefix string, basepath string, replicants int, hashFunc Hash) *HTTPPool {
+	return &HTTPPool{
+		Prefix:      prefix,
+		BasePath:    basepath,
+		peers:       NewNodePool(replicants, hashFunc),
+		httpGetters: make(map[string]*httpGetter),
 	}
 }
 
-func (s *cacheServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (s *HTTPPool) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	url := req.URL.Path
 
 	if !(strings.HasPrefix(url, s.BasePath)) {
@@ -45,4 +54,52 @@ func (s *cacheServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	} else {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func (s *HTTPPool) Pick(key string) (PeerGetter, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if peer := s.peers.Search(key); peer != "" && peer != s.Prefix {
+		return s.httpGetters[peer], true
+	}
+	return nil, false
+}
+
+func (s *HTTPPool) Add(peers ...string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, peer := range peers {
+		s.peers.Add(peer)
+		s.httpGetters[peer] = &httpGetter{
+			BasePath: peer + s.BasePath,
+		}
+	}
+}
+
+type httpGetter struct {
+	BasePath string
+}
+
+func (g *httpGetter) Search(group, key string) ([]byte, error) {
+	url := fmt.Sprintf(
+		"%v%v/%v",
+		g.BasePath,
+		url.QueryEscape(group),
+		url.QueryEscape(key),
+	)
+	res, err := http.Get(url)
+	if err != nil {
+		return []byte{}, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return []byte{}, fmt.Errorf("server return: %v", res.Status)
+	}
+
+	bytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		return []byte{}, err
+	}
+	return bytes, err
 }
