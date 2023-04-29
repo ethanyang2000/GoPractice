@@ -11,6 +11,7 @@ type Group struct {
 	Name      string
 	Getter    getter
 	peers     PeerPicker
+	loader    *CallGroup
 }
 
 var (
@@ -29,6 +30,7 @@ func NewGroup(name string, maxLen int64, getter getter, onEvicted func(string, l
 		},
 		Name:   name,
 		Getter: getter,
+		loader: &CallGroup{},
 	}
 	groups[name] = g
 	return g
@@ -57,14 +59,20 @@ func (g *Group) Search(key string) (ByteView, error) {
 }
 
 func (g *Group) load(key string) (ByteView, error) {
-	if g.peers != nil {
-		if peer, ok := g.peers.Pick(key); ok {
-			if value, err := g.getFromPeer(peer, key); err == nil {
-				return value, nil
+	data, err := g.loader.Call(key, func() (interface{}, error) {
+		if g.peers != nil {
+			if peer, ok := g.peers.Pick(key); ok {
+				if value, err := g.getFromPeer(peer, key); err == nil {
+					return value, nil
+				}
 			}
 		}
+		return g.getFromLocal(key)
+	})
+	if err != nil {
+		return ByteView{}, err
 	}
-	return g.getFromLocal(key)
+	return data.(ByteView), err
 }
 
 func (g *Group) getFromPeer(getter PeerGetter, key string) (ByteView, error) {
