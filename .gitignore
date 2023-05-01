@@ -13,3 +13,11 @@
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
+
+# binary files compiled by golang
+*
+!*.*
+!*/
+
+# database files
+*.db

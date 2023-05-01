@@ -7,14 +7,19 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+type User struct {
+	Name string `geeorm:"PRIMARY KEY"`
+	Age  int
+}
+
 func main() {
 	engine, _ := myorm.NewEngine("sqlite3", "gee.db")
 	defer engine.Close()
 	s := engine.NewSession()
-	_, _ = s.Raw("DROP TABLE IF EXISTS User;").Exec()
-	_, _ = s.Raw("CREATE TABLE User(Name text);").Exec()
-	_, _ = s.Raw("CREATE TABLE User(Name text);").Exec()
-	result, _ := s.Raw("INSERT INTO User(`Name`) values (?), (?)", "Tom", "Sam").Exec()
-	count, _ := result.RowsAffected()
-	fmt.Printf("Exec success, %d affected\n", count)
+	s.Model(&User{})
+	s.DropTable()
+	s.CreateTable()
+	if !s.HasTable() {
+		fmt.Printf("Failed to create table User")
+	}
 }
