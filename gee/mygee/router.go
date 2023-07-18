@@ -1,6 +1,7 @@
 package mygee
 
 import (
+	"net/http"
 	"strings"
 )
 
@@ -23,11 +24,12 @@ func (r *router) addRoute(method string, str string, h HandlerFunc) bool {
 func ParsePrefix(pattern string) []string {
 	ptns := strings.Split(pattern, "/")
 	prefixes := make([]string, 0)
-	for _, ptn := range ptns {
-		prefixes = append(prefixes, ptn)
+	for idx, ptn := range ptns {
 		if strings.HasPrefix(ptn, "*") {
+			prefixes = append(prefixes, strings.Join(ptns[idx:], "/"))
 			break
 		}
+		prefixes = append(prefixes, ptn)
 	}
 	return prefixes
 }
@@ -36,12 +38,12 @@ func (r *router) findRoute(c *Context) HandlerFunc {
 	prefixes := ParsePrefix(c.Path)
 	if _, ok := r.routerMap[c.Method]; !ok {
 		return func(c *Context) {
-			c.String(404, "NOT FOUND")
+			c.String(http.StatusNotFound, "NOT FOUND")
 		}
 	}
 	if node, ok := r.routerMap[c.Method].Search(prefixes, 0); !ok {
 		return func(c *Context) {
-			c.String(404, "NOT FOUND")
+			c.String(http.StatusNotFound, "NOT FOUND")
 		}
 	} else {
 		params := make(map[string]string)
@@ -51,7 +53,9 @@ func (r *router) findRoute(c *Context) HandlerFunc {
 				params[string([]byte(pattern)[1:])] = prefixes[idx]
 			}
 			if strings.HasPrefix(pattern, "*") {
-				params[string([]byte(pattern)[1:])] = strings.Join(prefixes[idx:], "/")
+				patterns[idx] = string([]byte(patterns[idx])[1:])
+				paramKey := strings.Join(patterns[idx:], "/")
+				params[paramKey] = strings.Join(prefixes[idx:], "/")
 			}
 		}
 		c.Params = params

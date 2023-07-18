@@ -35,20 +35,18 @@ func (n *node) Search(prefixes []string, depth int) (*node, bool) {
 
 func (n *node) Insert(pattern string, prefixes []string, depth int, handler HandlerFunc) bool {
 	if len(prefixes) == depth {
-		if strings.HasPrefix(n.Prefix, "*") {
-			n.Prefix = prefixes[depth-1]
-		}
 		n.Pattern = pattern
 		n.handler = handler
 		return true
 	}
 
 	for _, child := range n.Children {
-		if prefixes[depth] == child.Prefix || (strings.HasPrefix(child.Prefix, "*") && strings.HasPrefix(prefixes[depth], "*")) {
+		if prefixes[depth] == child.Prefix {
 			child.Insert(pattern, prefixes, depth+1, handler)
-		} else if strings.HasPrefix(child.Prefix, ":") && strings.HasPrefix(prefixes[depth], ":") {
+		} else if (strings.HasPrefix(child.Prefix, ":") && strings.HasPrefix(prefixes[depth], ":")) || (strings.HasPrefix(child.Prefix, "*") && strings.HasPrefix(prefixes[depth], "*")) {
 			child.Prefix = prefixes[depth]
 			child.Insert(pattern, prefixes, depth+1, handler)
+			//simply replace the original dynamic route when a new one is set
 		}
 	}
 	new_node := &node{Prefix: prefixes[depth], Children: make([]*node, 0), Pattern: ""}
