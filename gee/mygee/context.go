@@ -15,6 +15,7 @@ type Context struct {
 	Params  map[string]string
 	handler []HandlerFunc
 	index   int
+	engine  *Engine
 }
 
 func NewContext(w http.ResponseWriter, req *http.Request) *Context {
@@ -60,4 +61,21 @@ func (c *Context) JSON(code int, obj interface{}) {
 
 func (c *Context) Query(key string) string {
 	return c.Request.URL.Query().Get((key))
+}
+
+func (c *Context) Fail(code int, err string) {
+	c.index = len(c.handler)
+	c.JSON(code, H{"message": err})
+}
+
+func (c *Context) PostForm(key string) string {
+	return c.Request.FormValue(key)
+}
+
+func (c *Context) HTML(code int, name string, data interface{}) {
+	c.SetHeader("Content-Type", "text/html")
+	c.Status(code)
+	if err := c.engine.htmlTemplate.ExecuteTemplate(c.Writer, name, data); err != nil {
+		c.Fail(http.StatusInternalServerError, err.Error())
+	}
 }
