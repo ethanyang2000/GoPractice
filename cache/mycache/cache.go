@@ -9,7 +9,7 @@ type Cache struct {
 	mu        sync.Mutex
 	lru       *lru.LruCache
 	maxLen    int64
-	onEvicted func(string, lru.EntryValue)
+	onEvicted func(lru.Entry)
 }
 
 func (c *Cache) Search(key string) (bv ByteView, ok bool) {

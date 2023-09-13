@@ -11,7 +11,7 @@ func (d String) Len() int64 {
 	return int64(len(d))
 }
 
-func TestSearch(t *testing.T) {
+func TestSearchAndRemove(t *testing.T) {
 	lru := NewCache(int64(10), nil)
 	lru.Add("key1", String("1234"))
 	if v, ok := lru.Search("key1"); !ok || string(v.(String)) != "1234" {
@@ -19,6 +19,10 @@ func TestSearch(t *testing.T) {
 	}
 	if _, ok := lru.Search("key2"); ok {
 		t.Fatalf("cache miss key2 failed")
+	}
+	lru.Delete("key1")
+	if _, ok := lru.Search("key1"); ok {
+		t.Fatal("failed to delete cache")
 	}
 }
 
@@ -38,8 +42,8 @@ func TestRemoveoldest(t *testing.T) {
 
 func TestOnEvicted(t *testing.T) {
 	keys := make([]string, 0)
-	callback := func(key string, value EntryValue) {
-		keys = append(keys, key)
+	callback := func(e Entry) {
+		keys = append(keys, e.Key)
 	}
 	lru := NewCache(int64(10), callback)
 	lru.Add("key1", String("123456"))

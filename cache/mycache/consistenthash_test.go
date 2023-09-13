@@ -24,8 +24,8 @@ func TestHashing(t *testing.T) {
 	}
 
 	for k, v := range testCases {
-		if hash.Search(k) != v {
-			t.Errorf("Asking for %s, should have yielded %s but got %s", k, v, hash.Search(k))
+		if peer, ok := hash.Search(k); !ok || peer != v {
+			t.Errorf("Asking for %s, should have yielded %s but got %s", k, v, peer)
 		}
 	}
 
@@ -36,8 +36,8 @@ func TestHashing(t *testing.T) {
 	testCases["27"] = "8"
 
 	for k, v := range testCases {
-		if hash.Search(k) != v {
-			t.Errorf("Asking for %s, should have yielded %s but got %s", k, v, hash.Search(k))
+		if peer, ok := hash.Search(k); !ok || peer != v {
+			t.Errorf("Asking for %s, should have yielded %s but got %s", k, v, peer)
 		}
 	}
 

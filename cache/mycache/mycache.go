@@ -9,9 +9,9 @@ import (
 type Group struct {
 	MainCache *Cache
 	Name      string
-	Getter    getter
-	peers     PeerPicker
+	peers     *HTTPPool
 	loader    *CallGroup
+	Getter    getter
 }
 
 var (
@@ -19,19 +19,18 @@ var (
 	groups = make(map[string]*Group)
 )
 
-func NewGroup(name string, maxLen int64, getter getter, onEvicted func(string, lru.EntryValue)) *Group {
-	mu.Lock()
-	defer mu.Unlock()
+func NewGroup(name string, maxLen int64, getter getter, onEvicted func(lru.Entry)) *Group {
 	g := &Group{
 		MainCache: &Cache{
 			maxLen:    maxLen,
 			onEvicted: onEvicted,
-			lru:       lru.NewCache(maxLen, onEvicted),
 		},
 		Name:   name,
 		Getter: getter,
 		loader: &CallGroup{},
 	}
+	mu.Lock()
+	defer mu.Unlock()
 	groups[name] = g
 	return g
 }
@@ -61,10 +60,8 @@ func (g *Group) Search(key string) (ByteView, error) {
 func (g *Group) load(key string) (ByteView, error) {
 	data, err := g.loader.Call(key, func() (interface{}, error) {
 		if g.peers != nil {
-			if peer, ok := g.peers.Pick(key); ok {
-				if value, err := g.getFromPeer(peer, key); err == nil {
-					return value, nil
-				}
+			if data, err := g.peers.Search(g.Name, key); err == nil {
+				return ByteView{b: data}, err
 			}
 		}
 		return g.getFromLocal(key)
@@ -75,27 +72,17 @@ func (g *Group) load(key string) (ByteView, error) {
 	return data.(ByteView), err
 }
 
-func (g *Group) getFromPeer(getter PeerGetter, key string) (ByteView, error) {
-	value, err := getter.Search(g.Name, key)
-	if err != nil {
-		return ByteView{}, err
-	}
-	return ByteView{B: value}, nil
-}
-
 func (g *Group) getFromLocal(key string) (ByteView, error) {
 	v, err := g.Getter.Get(key)
 	if err != nil {
 		return ByteView{}, fmt.Errorf("get data from local database failed")
 	}
-	newV := make([]byte, len(v))
-	copy(newV, v)
-	bv := ByteView{B: newV}
+	bv := ByteView{b: v}
 	g.MainCache.Add(key, bv)
 	return bv, nil
 }
 
-func (g *Group) RegisterPeers(peers PeerPicker) {
+func (g *Group) RegisterPeers(peers *HTTPPool) {
 	if g.peers == nil {
 		g.peers = peers
 	} else {

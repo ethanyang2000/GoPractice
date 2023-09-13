@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 )
 
 var db = map[string]string{
-	"Tom":  "630",
-	"Jack": "589",
-	"Sam":  "567",
+	"1": "630",
+	"2": "589",
+	"3": "567",
 }
 
 func createGroup() *mycache.Group {
@@ -26,8 +27,13 @@ func createGroup() *mycache.Group {
 }
 
 func startCacheServer(addr string, addrs []string, gee *mycache.Group) {
-	peers := mycache.NewPool(addr, "/geecache/", 50, nil)
-	peers.Add(addrs...)
+	peers := mycache.NewPool(addr, "/geecache", 50, func(b []byte) uint32 {
+		i, _ := strconv.Atoi(string(b))
+		return uint32(i)
+	})
+	for idx, a := range addrs {
+		peers.Add(strconv.Itoa(idx), a)
+	}
 	gee.RegisterPeers(peers)
 	log.Println("geecache is running at", addr)
 	log.Fatal(http.ListenAndServe(addr[7:], peers))
@@ -38,6 +44,7 @@ func startAPIServer(apiAddr string, gee *mycache.Group) {
 		func(w http.ResponseWriter, r *http.Request) {
 			key := r.URL.Query().Get("key")
 			view, err := gee.Search(key)
+
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
@@ -46,7 +53,7 @@ func startAPIServer(apiAddr string, gee *mycache.Group) {
 			w.Write(view.Slice())
 
 		}))
-	log.Println("fontend server is running at", apiAddr)
+	log.Println("frontend server is running at", apiAddr)
 	log.Fatal(http.ListenAndServe(apiAddr[7:], nil))
 
 }

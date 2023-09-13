@@ -40,14 +40,15 @@ func (nodes *NodeMap) Add(name string) {
 
 }
 
-func (nodes *NodeMap) Search(key string) string {
+func (nodes *NodeMap) Search(key string) (string, bool) {
 	if len(nodes.realNodes) == 0 {
-		return ""
+		return "", false
 	}
 	hashValue := nodes.hash([]byte(key))
+
 	idx := sort.Search(len(nodes.virtualNodes), func(i int) bool {
 		return nodes.virtualNodes[i] >= hashValue
 	})
 	idx = idx % len(nodes.virtualNodes)
-	return nodes.realNodes[nodes.virtualNodes[idx]]
+	return nodes.realNodes[nodes.virtualNodes[idx]], true
 }

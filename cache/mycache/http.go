@@ -1,39 +1,36 @@
 package mycache
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 )
 
 type HTTPPool struct {
-	Prefix      string
-	BasePath    string
-	mu          sync.Mutex
-	peers       *NodeMap
-	httpGetters map[string]*httpGetter
+	selfPath string
+	basePath string
+	peers    *PeerManager
 }
 
-func NewPool(prefix string, basepath string, replicants int, hashFunc Hash) *HTTPPool {
+func NewPool(selfPath string, basepath string, replicants int, hashFunc Hash) *HTTPPool {
 	return &HTTPPool{
-		Prefix:      prefix,
-		BasePath:    basepath,
-		peers:       NewNodePool(replicants, hashFunc),
-		httpGetters: make(map[string]*httpGetter),
+		selfPath: selfPath,
+		basePath: basepath,
+		peers:    NewPeerManager(replicants, hashFunc),
 	}
 }
 
 func (s *HTTPPool) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	url := req.URL.Path
 
-	if !(strings.HasPrefix(url, s.BasePath)) {
+	if !(strings.HasPrefix(url, s.basePath)) {
 		http.Error(w, url+" Not Found", http.StatusNotFound)
 	}
 
-	urls := strings.SplitN(string([]byte(url)[len(s.BasePath):]), "/", 2)
+	urls := strings.SplitN(string([]byte(url)[len(s.basePath)+1:]), "/", 2)
 
 	if len(urls) != 2 {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
@@ -56,37 +53,23 @@ func (s *HTTPPool) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (s *HTTPPool) Pick(key string) (PeerGetter, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if peer := s.peers.Search(key); peer != "" && peer != s.Prefix {
-		return s.httpGetters[peer], true
+func (s *HTTPPool) Add(peer, url string) error {
+	return s.peers.Add(peer, url)
+}
+
+func (s *HTTPPool) Search(group, key string) ([]byte, error) {
+	u, err := s.peers.Search(key)
+
+	if err != nil || u == s.selfPath {
+		return []byte{}, errors.New("failed to get cache from peers")
 	}
-	return nil, false
-}
-
-func (s *HTTPPool) Add(peers ...string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, peer := range peers {
-		s.peers.Add(peer)
-		s.httpGetters[peer] = &httpGetter{
-			BasePath: peer + s.BasePath,
-		}
-	}
-}
-
-type httpGetter struct {
-	BasePath string
-}
-
-func (g *httpGetter) Search(group, key string) ([]byte, error) {
-	url := fmt.Sprintf(
-		"%v%v/%v",
-		g.BasePath,
+	url := u + fmt.Sprintf(
+		"%v/%v/%v",
+		s.basePath,
 		url.QueryEscape(group),
 		url.QueryEscape(key),
 	)
+
 	res, err := http.Get(url)
 	if err != nil {
 		return []byte{}, err

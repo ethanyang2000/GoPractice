@@ -1,19 +1,19 @@
 package mycache
 
 type ByteView struct {
-	B []byte
+	b []byte
 }
 
 func (bv ByteView) Slice() []byte {
-	B := make([]byte, len(bv.B))
-	copy(B, bv.B)
+	B := make([]byte, len(bv.b))
+	copy(B, bv.b)
 	return B
 }
 
 func (bv ByteView) Len() int64 {
-	return int64(len(bv.B))
+	return int64(len(bv.b))
 }
 
 func (bv ByteView) String() string {
-	return string(bv.B)
+	return string(bv.b)
 }

@@ -1,6 +1,8 @@
 package mycache
 
-import "sync"
+import (
+	"sync"
+)
 
 type call struct {
 	wg   sync.WaitGroup
