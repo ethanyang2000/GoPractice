@@ -3,23 +3,21 @@ package mygee
 import (
 	"net/http"
 	"path"
-	"strings"
 	"text/template"
 )
 
 type HandlerFunc func(c *Context)
-type RouterMap map[string]*node
 
 type Engine struct {
 	*RouterGroup
-	r     *router
-	group []*RouterGroup
+	r      *router
+	groups []*RouterGroup
 }
 
 type RouterGroup struct {
 	engine       *Engine
-	basePath     string
-	relativePath string
+	fullPath     string
+	groupPath    string
 	parent       *RouterGroup
 	middleware   []HandlerFunc
 	htmlTemplate *template.Template
@@ -29,22 +27,22 @@ type RouterGroup struct {
 func New() *Engine {
 	e := &Engine{r: NewRouter()}
 	e.RouterGroup = &RouterGroup{
-		engine:       e,
-		basePath:     "",
-		relativePath: "",
+		engine:    e,
+		fullPath:  "",
+		groupPath: "",
 	}
-	e.group = append(e.group, e.RouterGroup)
+	e.groups = append(e.groups, e.RouterGroup)
 	return e
 }
 
 func (group *RouterGroup) Group(path string) *RouterGroup {
 	g := &RouterGroup{
-		engine:       group.engine,
-		parent:       group,
-		relativePath: path,
-		basePath:     strings.Join([]string{group.basePath, path}, ""),
+		engine:    group.engine,
+		parent:    group,
+		groupPath: path,
+		fullPath:  group.fullPath + path,
 	}
-	group.engine.group = append(group.engine.group, g)
+	group.engine.groups = append(group.engine.groups, g)
 	return g
 }
 
@@ -53,37 +51,35 @@ func (gourp *RouterGroup) Use(middleware ...HandlerFunc) {
 }
 
 func (g *RouterGroup) GET(str string, h HandlerFunc) {
-	str = strings.Join([]string{g.basePath, str}, "")
-	g.engine.r.addRoute("GET", str, h)
+	g.engine.r.addRoute("GET", g.fullPath+str, h)
 }
 
 func (g *RouterGroup) POST(str string, h HandlerFunc) {
-	str = strings.Join([]string{g.basePath, str}, "")
-	g.engine.r.addRoute("POST", str, h)
+	g.engine.r.addRoute("POST", g.fullPath+str, h)
 }
 
-func (g *RouterGroup) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (e *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	c := NewContext(w, req)
-	c.engine = g.engine
-	g.engine.r.handle(c, g)
+	c.engine = e
+	e.r.handle(c, e)
 }
 
-func (g *RouterGroup) Run(port string) (err error) {
-	return http.ListenAndServe(port, g.engine)
+func (e *Engine) Run(port string) (err error) {
+	return http.ListenAndServe(port, e)
 }
 
-func (g *RouterGroup) Static(relativePath string, filePath string) {
-	absolutePath := path.Join(g.basePath, relativePath)
-	h := g.createStaticHandler(absolutePath, filePath)
-	URLPath := path.Join(relativePath, "/*filepath")
+func (g *RouterGroup) Static(relativeRoute string, resourcePath string) {
+	routePath := path.Join(g.fullPath, relativeRoute)
+	h := g.createStaticHandler(routePath, resourcePath)
+	URLPath := path.Join(routePath, "/*filepath")
 	g.GET(URLPath, h)
 }
 
-func (g *RouterGroup) createStaticHandler(absolutePath string, filePath string) HandlerFunc {
-	fileServer := http.StripPrefix(absolutePath, http.FileServer(http.Dir(filePath)))
+func (g *RouterGroup) createStaticHandler(routePath string, resourcePath string) HandlerFunc {
+	fileServer := http.StripPrefix(routePath, http.FileServer(http.Dir(resourcePath)))
 	return func(c *Context) {
 		file := c.Params["filepath"]
-		if _, err := http.Dir(filePath).Open(file); err != nil {
+		if _, err := http.Dir(resourcePath).Open(file); err != nil {
 			c.Status(http.StatusNotFound)
 			return
 		}

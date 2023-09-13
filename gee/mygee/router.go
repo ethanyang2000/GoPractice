@@ -5,6 +5,7 @@ import (
 	"strings"
 )
 
+type RouterMap map[string]*node
 type router struct {
 	routerMap RouterMap
 }
@@ -13,63 +14,46 @@ func NewRouter() *router {
 	return &router{routerMap: make(RouterMap)}
 }
 
-func (r *router) addRoute(method string, str string, h HandlerFunc) bool {
-	prefixes := ParsePrefix(str)
+func (r *router) addRoute(method string, path string, h HandlerFunc) error {
 	if _, ok := r.routerMap[method]; !ok {
 		r.routerMap[method] = NewRoot()
 	}
-	return r.routerMap[method].Insert(str, prefixes, 0, h)
-}
-
-func ParsePrefix(pattern string) []string {
-	ptns := strings.Split(pattern, "/")
-	prefixes := make([]string, 0)
-	for idx, ptn := range ptns {
-		if strings.HasPrefix(ptn, "*") {
-			prefixes = append(prefixes, strings.Join(ptns[idx:], "/"))
-			break
-		}
-		prefixes = append(prefixes, ptn)
-	}
-	return prefixes
+	return r.routerMap[method].Insert(strings.Split(path, "/"), h)
 }
 
 func (r *router) findRoute(c *Context) HandlerFunc {
-	prefixes := ParsePrefix(c.Path)
 	if _, ok := r.routerMap[c.Method]; !ok {
 		return func(c *Context) {
-			c.String(http.StatusNotFound, "NOT FOUND")
+			c.String(http.StatusNotFound, " NOT FOUND")
 		}
 	}
-	if node, ok := r.routerMap[c.Method].Search(prefixes, 0); !ok {
+	results := []string{}
+	params := []string{}
+	if node, err := r.routerMap[c.Method].Search(strings.Split(c.Path, "/"), &results, &params); err != nil {
 		return func(c *Context) {
 			c.String(http.StatusNotFound, "NOT FOUND")
 		}
 	} else {
-		params := make(map[string]string)
-		patterns := strings.Split(node.Pattern, "/")
-		for idx, pattern := range patterns {
-			if strings.HasPrefix(pattern, ":") {
-				params[string([]byte(pattern)[1:])] = prefixes[idx]
-			}
-			if strings.HasPrefix(pattern, "*") {
-				patterns[idx] = string([]byte(patterns[idx])[1:])
-				paramKey := strings.Join(patterns[idx:], "/")
-				params[paramKey] = strings.Join(prefixes[idx:], "/")
+		p := make(map[string]string)
+		idx := 0
+		for _, r := range results {
+			if strings.HasPrefix(r, "*") || strings.HasPrefix(r, ":") {
+				p[string([]byte(r)[1:])] = params[idx]
+				idx += 1
 			}
 		}
-		c.Params = params
+		c.Params = p
 		return node.handler
 	}
 }
 
-func (r *router) handle(c *Context, g *RouterGroup) {
+func (r *router) handle(c *Context, e *Engine) {
 	handler := r.findRoute(c)
-	for _, group := range g.engine.group {
-		if strings.HasPrefix(c.Path, group.basePath) {
-			c.handler = append(c.handler, group.middleware...)
+	for _, group := range e.groups {
+		if strings.HasPrefix(c.Path, group.fullPath) {
+			c.handlers = append(c.handlers, group.middleware...)
 		}
 	}
-	c.handler = append(c.handler, handler)
+	c.handlers = append(c.handlers, handler)
 	c.Next()
 }

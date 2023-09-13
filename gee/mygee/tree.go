@@ -1,57 +1,81 @@
 package mygee
 
 import (
+	"errors"
 	"strings"
 )
 
 type node struct {
-	Pattern  string
-	Prefix   string
+	isPath   bool
+	nodePath string
 	Children []*node
 	handler  HandlerFunc
 }
 
 func NewRoot() *node {
-	return &node{Pattern: "", Prefix: "/", Children: make([]*node, 0)}
+	return &node{isPath: false, nodePath: "", Children: make([]*node, 0)}
 }
 
-func (n *node) Search(prefixes []string, depth int) (*node, bool) {
-	if depth == len(prefixes) || strings.HasPrefix(n.Prefix, "*") {
-		if n.Pattern == "" {
-			return nil, false
-		}
-		return n, true
+func (n *node) Search(targets []string, results *[]string, params *[]string) (*node, error) {
+	if strings.HasPrefix(n.nodePath, "*") {
+		*params = append(*params, strings.Join(targets, "/"))
+		return n, nil
 	}
-
+	if len(targets) == 0 {
+		if n.isPath {
+			return n, nil
+		} else {
+			return nil, errors.New("route do not exist")
+		}
+	}
 	for _, child := range n.Children {
-		if prefixes[depth] == child.Prefix || strings.HasPrefix(child.Prefix, "*") || strings.HasPrefix(child.Prefix, ":") {
-			if ans, ok := child.Search(prefixes, depth+1); ok {
-				return ans, true
+		if child.nodePath == targets[0] {
+			*results = append(*results, n.nodePath)
+			return n.Search(targets[1:], results, params)
+		} else {
+			if strings.HasPrefix(child.nodePath, "*") {
+				*results = append(*results, n.nodePath)
+				return n.Search(targets[1:], results, params)
+			}
+			if strings.HasPrefix(child.nodePath, ":") {
+				*results = append(*results, n.nodePath)
+				*params = append(*params, targets[0])
+				return n.Search(targets[1:], results, params)
 			}
 		}
 	}
-	return nil, false
+	return nil, errors.New("route do not exist")
 }
 
-func (n *node) Insert(pattern string, prefixes []string, depth int, handler HandlerFunc) bool {
-	if len(prefixes) == depth {
-		n.Pattern = pattern
+func (n *node) Insert(targets []string, handler HandlerFunc) error {
+	// register a dynamic route ":" with other routes in the same path is allowed,
+	// but the results are unpredicable
+	if len(targets) == 0 {
+		n.isPath = true
 		n.handler = handler
-		return true
+		return nil
+	}
+
+	if len(n.Children) == 1 && (strings.HasPrefix(n.Children[0].nodePath, "*")) {
+		if n.Children[0].nodePath == targets[0] {
+			n.Children[0].isPath = true
+			n.Children[0].handler = handler
+			return nil
+		} else {
+			return errors.New("cannot add new routes to existing dynamic routes \"*\"")
+		}
+	}
+
+	if len(n.Children) > 0 && (strings.HasPrefix(targets[0], "*")) {
+		return errors.New("cannot add dynamic routes \"*\" to existing routes")
 	}
 
 	for _, child := range n.Children {
-		if prefixes[depth] == child.Prefix {
-			child.Insert(pattern, prefixes, depth+1, handler)
-		} else if (strings.HasPrefix(child.Prefix, ":") && strings.HasPrefix(prefixes[depth], ":")) || (strings.HasPrefix(child.Prefix, "*") && strings.HasPrefix(prefixes[depth], "*")) {
-			child.Prefix = prefixes[depth]
-			child.Insert(pattern, prefixes, depth+1, handler)
-			//simply replace the original dynamic route when a new one is set
+		if targets[0] == child.nodePath {
+			return child.Insert(targets[1:], handler)
 		}
 	}
-	new_node := &node{Prefix: prefixes[depth], Children: make([]*node, 0), Pattern: ""}
+	new_node := &node{nodePath: targets[0], Children: make([]*node, 0), isPath: false}
 	n.Children = append(n.Children, new_node)
-	new_node.Insert(pattern, prefixes, depth+1, handler)
-
-	return false
+	return new_node.Insert(targets[1:], handler)
 }

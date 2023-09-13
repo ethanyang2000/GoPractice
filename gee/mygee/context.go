@@ -8,14 +8,14 @@ import (
 
 type H map[string]interface{}
 type Context struct {
-	Writer  http.ResponseWriter
-	Request *http.Request
-	Method  string
-	Path    string
-	Params  map[string]string
-	handler []HandlerFunc
-	index   int
-	engine  *Engine
+	Writer   http.ResponseWriter
+	Request  *http.Request
+	Method   string
+	Path     string
+	Params   map[string]string
+	handlers []HandlerFunc
+	index    int
+	engine   *Engine
 }
 
 func NewContext(w http.ResponseWriter, req *http.Request) *Context {
@@ -30,9 +30,9 @@ func NewContext(w http.ResponseWriter, req *http.Request) *Context {
 
 func (c *Context) Next() {
 	c.index++
-	l := len(c.handler)
+	l := len(c.handlers)
 	for ; c.index < l; c.index++ {
-		c.handler[c.index](c)
+		c.handlers[c.index](c)
 	}
 }
 
@@ -64,7 +64,7 @@ func (c *Context) Query(key string) string {
 }
 
 func (c *Context) Fail(code int, err string) {
-	c.index = len(c.handler)
+	c.index = len(c.handlers)
 	c.JSON(code, H{"message": err})
 }
 
